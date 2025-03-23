@@ -1,4 +1,4 @@
-import { minifyCode } from "../utils/minifyCode.js";
+import { minifyCode } from "../../utils/minifyCode.js";
 
 /**
  * Базовый класс для всех генераторов кода
@@ -35,10 +35,11 @@ export class BaseGenerator {
   }
 
   /**
-   * Поиск необходимых элементов в DOM
-   * Переопределяется в дочерних классах
+   * Поиск основных элементов в DOM.
+   * Дочерние классы дополняют/переопределяют при необходимости.
    */
   findElements() {
+    // Универсальные элементы, которые часто нужны
     this.elements.generateButton = document.getElementById("generate-btn");
     this.elements.modal = document.getElementById(this.options.modalId);
     this.elements.closeModal = document.querySelectorAll(
@@ -48,52 +49,96 @@ export class BaseGenerator {
   }
 
   /**
-   * Привязка обработчиков событий
-   * Переопределяется в дочерних классах
+   * Привязка основных обработчиков событий.
+   * Дочерние классы дополняют/переопределяют при необходимости.
    */
   bindEvents() {
     if (this.eventsInitialized) {
       console.log(`${this.constructor.name}: События уже инициализированы`);
       return;
     }
-
+    // Привязываем общие события для модального окна:
+    this.bindDefaultModalCloseEvents();
+    // Отметим, что всё инициализировано
     this.eventsInitialized = true;
   }
 
   /**
+   * Привязываем универсальные события на закрытие модалки
+   */
+  bindDefaultModalCloseEvents() {
+    const { modal, closeModal } = this.elements;
+    if (!modal) return;
+
+    closeModal?.forEach((btn) =>
+      btn.addEventListener("click", () => this.closeModal())
+    );
+
+    modal.addEventListener("click", (event) => {
+      if (event.target === modal) this.closeModal();
+    });
+
+    document.addEventListener("keydown", (event) => {
+      if (event.key === "Escape" && modal.style.display !== "none") {
+        this.closeModal();
+      }
+    });
+  }
+
+  /**
    * Удаление обработчиков событий
-   * Переопределяется в дочерних классах
    */
   unbindEvents() {
     if (!this.eventsInitialized) return;
 
     console.log(`${this.constructor.name}: Удаление обработчиков событий`);
+    // Тут при необходимости мы можем отцеплять слушатели
+    // (если нужно вручную хранить ссылки на функции, как в SmoothScroll).
+    // Сейчас у нас общий case – делаем минимальное.
+
     this.eventsInitialized = false;
   }
 
   /**
    * Установка начального состояния генератора
-   * Переопределяется в дочерних классах
+   * Дочерние классы переопределяют при необходимости
    */
   setInitialState() {
     // Реализация в дочерних классах
   }
 
   /**
-   * Генерация кода на основе настроек
-   * Обязательно переопределяется в дочерних классах
-   * @returns {string} - Сгенерированный код
+   * Шаблонный метод: "Собери → Сгенерируй → Скопируй → Покажи результат"
    */
+  generateAndCopyCode() {
+    const settings = this.collectData(); // Сами дочерние классы решают, что здесь собирать
+    const code = this.generateCode(settings);
+    // Если нужно вывести в <pre id="js-code">:
+    if (this.elements.jsCode) {
+      this.elements.jsCode.textContent = code;
+    }
+    this.copyAndNotify(code);
+  }
 
+  /**
+   * Сбор данных (дочерний класс переопределяет).
+   */
+  collectData() {
+    // Пустая базовая реализация
+    return {};
+  }
+
+  /**
+   * Генерация кода (дочерний класс переопределяет).
+   */
   generateCode() {
     throw new Error(
-      "Метод generateCode должен быть переопределен в дочернем классе"
+      "Метод generateCode должен быть переопределён в дочернем классе"
     );
   }
 
   /**
    * Копирование кода в буфер обмена и отображение уведомления
-   * @param {string} code - Код для копирования
    */
   async copyAndNotify(code) {
     const minified = minifyCode(code);
@@ -111,9 +156,7 @@ export class BaseGenerator {
 
   /**
    * Резервный метод копирования в буфер обмена
-   * @param {string} text - Текст для копирования
    */
-
   fallbackCopy(text) {
     const textarea = document.createElement("textarea");
     textarea.value = text;
@@ -137,10 +180,9 @@ export class BaseGenerator {
     }
   }
 
-  /* 
-  generateAndCopyCode() //TODO! ОПИСАТЬ
-  collectData() {} //TODO! ОПИСАТЬ */
-
+  /**
+   * Закрыть модалку
+   */
   closeModal() {
     if (this.elements.modal) {
       this.elements.modal.style.display = "none";
@@ -148,7 +190,7 @@ export class BaseGenerator {
   }
 
   /**
-   * Отображает модальное окно успешного копирования
+   * Показать сообщение об успехе
    */
   showSuccessModal() {
     if (this.elements.modal) {
@@ -159,11 +201,10 @@ export class BaseGenerator {
   }
 
   /**
-   * Отображает модальное окно с ошибкой
-   * @param {string} message - Сообщение об ошибке
+   * Показать сообщение об ошибке
    */
   showErrorModal(message) {
-    alert(message || "Произошла ошибка. Попробуйте еще раз.");
+    alert(message || "Произошла ошибка. Попробуйте ещё раз.");
   }
 
   /**

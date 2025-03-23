@@ -10,11 +10,11 @@
       content="width=device-width, initial-scale=1.0, minimum-scale=1.0"
     />
     <link rel="icon" href="./favicon.png" type="image/png" />
+    <!-- Тема -->
     <link
       rel="stylesheet"
       href="//cdn.jsdelivr.net/npm/docsify@4/lib/themes/vue.css"
     />
-
     <!-- Общие стили -->
     <link rel="stylesheet" href="./css/common/base.css" />
     <link rel="stylesheet" href="./css/common/forms.css" />
@@ -27,10 +27,13 @@
     <link rel="stylesheet" href="./css/generators/multilanding.css" />
   </head>
   <body>
+    <!-- Корневой элемент -->
     <div id="app"></div>
+
+    <!-- Конфиг Docsify -->
     <script>
       window.$docsify = {
-        name: "f",
+        name: "Taptop",
         repo: "",
         loadSidebar: true,
         alias: {
@@ -38,83 +41,83 @@
         },
         homepage: "./guide.md",
         subMaxLevel: 2,
-        name: "taptop",
         themeColor: "#3290ff",
         auto2top: true,
       };
     </script>
-    <!-- Docsify v4 -->
+
+    <!-- Подключаем Docsify -->
     <script src="//cdn.jsdelivr.net/npm/docsify@4"></script>
 
-    <!-- Утилиты -->
-    <script type="module" src="./js/utils/minifyCode.js"></script>
-    <script type="module" src="./js/utils/copyToClipboard.js"></script>
-    <script type="module" src="./js/utils/modal.js"></script>
+    <!-- Подключаем генераторы -->
+    <script type="module">
+      import generatorsManager, {
+        initAllGenerators,
+      } from "./js/generators/base/generatorsManager.js";
 
-    <!-- Базовый класс генератора -->
-    <script type="module" src="./js/generators/baseGenerator.js"></script>
+      /* 1. Функция для ожидания формирования DOM, после смены страницы */
+      function waitForDocsifyNavigation(callback) {
+        // Если контент уже существует, сразу вызываем колбэк
+        if (document.querySelector(".content")) {
+          setTimeout(callback, 50);
+          return;
+        }
 
-    <!-- Генераторы -->
-    <script type="module" src="./js/generators/cookieGenerator.js"></script>
-    <script
-      type="module"
-      src="./js/generators/smoothScrollGenerator.js"
-    ></script>
-    <script
-      type="module"
-      src="./js/generators/multilandingGenerator.js"
-    ></script>
+        // Иначе устанавливаем наблюдатель
+        const observer = new MutationObserver((mutations) => {
+          for (const mutation of mutations) {
+            // Проверяем добавление новых узлов
+            if (mutation.addedNodes.length) {
+              if (document.querySelector(".content")) {
+                setTimeout(() => {
+                  observer.disconnect();
+                  callback();
+                }, 50);
+                return;
+              }
+            }
+          }
+        });
 
-    <!-- Доксифай-плагин для инициализации после рендера -->
-    <script>
+        observer.observe(document.body, {
+          childList: true,
+          subtree: true,
+        });
+
+        // Страховка: если через 3 секунды наблюдатель не сработал, всё равно вызываем колбэк
+        setTimeout(() => {
+          observer.disconnect();
+          callback();
+        }, 1000);
+      }
+
+      /* 2. Docsify-плагин. после рендера Docsify перезапускаем генераторы */
       if (window.$docsify) {
         window.$docsify.plugins = window.$docsify.plugins || [];
         window.$docsify.plugins.push(function (hook) {
           hook.doneEach(function () {
-            setTimeout(function () {
-              if (window.initGenerators) {
-                window.initGenerators();
+            waitForDocsifyNavigation(() => {
+              // Сбрасываем и инициализируем генераторы
+              if (generatorsManager.initialized) {
+                generatorsManager.reset();
               }
-            }, 300);
+              initAllGenerators();
+            });
           });
         });
       }
-    </script>
 
-    <script type="module">
-      import { CookieGenerator } from "./js/generators/cookieGenerator.js";
-      import { SmoothScrollGenerator } from "./js/generators/smoothScrollGenerator.js";
-      import { DynamicContentGenerator } from "./js/generators/multilandingGenerator.js";
-      import generatorsManager from "./js/generators/generatorsManager.js";
-
-      // Функция для запуска после загрузки DOM
-      function initializeGenerators() {
-        // Регистрируем генераторы
-        generatorsManager
-          .register("cookie", CookieGenerator, "#cookie-generator")
-          .register(
-            "smoothScroll",
-            SmoothScrollGenerator,
-            "#smooth-scroll-generator"
-          )
-          .register(
-            "dynamicContent",
-            DynamicContentGenerator,
-            ".dcm-container"
-          );
-
-        generatorsManager.initAll();
-      }
-
-      // Запускаем инициализацию
-      document.addEventListener("DOMContentLoaded", initializeGenerators);
-
-      // Переопределяем глобальный метод инициализации для Docsify
-      window.initGenerators = function () {
-        if (generatorsManager.initialized) {
-          generatorsManager.reset();
+      // Инициализация при открытии страницы без Docsify (просто index.html)
+      document.addEventListener("DOMContentLoaded", () => {
+        if (!window.$docsify || !generatorsManager.initialized) {
+          initAllGenerators();
         }
-        generatorsManager.initAll();
+      });
+
+      // Глобальная функция для внешних вызовов
+      window.initGenerators = function () {
+        generatorsManager.reset();
+        initAllGenerators();
       };
     </script>
   </body>

@@ -1,4 +1,4 @@
-import { BaseGenerator } from "./baseGenerator.js";
+import { BaseGenerator } from "./base/baseGenerator.js";
 
 export class CookieGenerator extends BaseGenerator {
   constructor() {
@@ -27,49 +27,17 @@ export class CookieGenerator extends BaseGenerator {
   }
 
   bindEvents() {
-    // Генерация кода по клику
-    this.elements.generateButton?.addEventListener("click", () =>
-      this.generateAndCopyCode()
-    );
+    super.bindEvents(); // Подключаем базовые события (закрытие модалки и т.д.)
 
-    // Обработчики для модального окна
-    this.elements.closeModal?.forEach((btn) =>
-      btn.addEventListener("click", () => this.closeModal())
-    );
-    this.elements.modal?.addEventListener("click", (event) => {
-      if (event.target === this.elements.modal) this.closeModal();
-    });
-    document.addEventListener("keydown", (event) => {
-      if (
-        event.key === "Escape" &&
-        this.elements.modal?.style.display !== "none"
-      ) {
-        this.closeModal();
-      }
+    // Связка кнопки "Generate" со стандартным методом "Сгенерировать и скопировать"
+    this.elements.generateButton?.addEventListener("click", () => {
+      this.generateAndCopyCode();
     });
   }
 
-  generateAndCopyCode() {
-    // Собираем настройки из формы
-    const settings = this.collectData();
-
-    // Фиксированные классы для закрывающих элементов
-    const closeBtnClass = "pop-up__inside-close-button";
-    const overlayClass = "pop-up__overlay";
-
-    // Генерируем код и выводим его (например, для отладки)
-    const generatedCode = this.generateCode(
-      settings,
-      closeBtnClass,
-      overlayClass
-    );
-    if (this.elements.jsCode) {
-      this.elements.jsCode.textContent = generatedCode;
-    }
-    // Копируем код в буфер обмена
-    this.copyAndNotify(generatedCode);
-  }
-
+  /**
+   * Собираем настройки из формы
+   */
   collectData() {
     const { inputs } = this.elements;
     return {
@@ -83,7 +51,15 @@ export class CookieGenerator extends BaseGenerator {
     };
   }
 
-  generateCode(settings, closeBtnClass, overlayClass) {
+  /**
+   * Генерируем код
+   */
+  generateCode(settings = {}) {
+    // Можем передавать параметры "closeBtnClass" и "overlayClass"
+    // прямо здесь или оставить хардкодно
+    const closeBtnClass = "pop-up__inside-close-button";
+    const overlayClass = "pop-up__overlay";
+
     return `<script>
 document.addEventListener("DOMContentLoaded", () => {
   // Функции для работы с cookie
@@ -137,23 +113,3 @@ document.addEventListener("DOMContentLoaded", () => {
 </script>`;
   }
 }
-
-// Вспомогательная функция для создания и инициализации генератора
-const createAndInitGenerator = (generatorId, GeneratorClass) => {
-  if (document.getElementById(generatorId)) {
-    const generator = new GeneratorClass();
-    generator.init();
-    return generator;
-  }
-  return null;
-};
-
-// Инициализация генератора при загрузке DOM
-document.addEventListener("DOMContentLoaded", () => {
-  createAndInitGenerator("cookie-generator", CookieGenerator);
-});
-
-// Экспорт для инициализации через Docsify
-window.initCookieGenerator = () =>
-  createAndInitGenerator("cookie-generator", CookieGenerator);
-
