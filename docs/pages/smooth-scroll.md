@@ -79,11 +79,11 @@
           </div>
           <div class="setting-group">
             <label class="checkbox-container">
-              <input type="checkbox" id="mobile-support" checked>
+              <input type="checkbox"  id="mobile-support">
               <span class="checkmark"></span>
               <span class="checkbox-option-label">Оптимизация для мобильных устройств</span>
             </label>
-            <div class="helper-text">Добавляет плавный скролл при свайпах на сенсорных экранах</div>
+            <div class="helper-text">Добавляет ваши настройки при свайпах на сенсорных экранах</div>
           </div>
         </div>
       </div>

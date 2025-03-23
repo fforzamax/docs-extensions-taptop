@@ -2,12 +2,25 @@ import { BaseGenerator } from "./base/baseGenerator.js";
 import { parseCommaList } from "../utils/parseCommaList.js";
 
 /**
- * Генератор динамического контента (UTM + IP)
+ * Генератор динамического контента для мультилендингов на основе UTM-параметров и геоданных.
+ * Позволяет настраивать замену текста и отображение блоков на основе:
+ * - UTM-параметров в URL
+ * - Геолокации посетителя (через GeoJS API)
+ *
+ * @extends BaseGenerator
  */
 export class MultilandingGenerator extends BaseGenerator {
   constructor() {
     super();
 
+    /**
+     * Конфигурация по умолчанию
+     * @type {Object}
+     * @property {Array} textReplacements - Правила замены текста
+     * @property {Array} blockVisibility - Правила отображения блоков
+     * @property {Object} defaultBlockVisibility - Настройки отображения блоков по умолчанию
+     * @property {Array} ipRules - Правила на основе геолокации
+     */
     this.config = {
       textReplacements: [
         {
@@ -52,10 +65,32 @@ export class MultilandingGenerator extends BaseGenerator {
       ],
     };
 
+    /**
+     * Активная вкладка в интерфейсе
+     * @type {string}
+     */
     this.activeTab = "text";
+
+    /**
+     * Шаблоны для рендеринга UI
+     * @type {Object}
+     */
     this.templates = {};
+
+    /**
+     * Хранилище для обработчиков событий модального окна со списком стран
+     * @type {Object}
+     * @private
+     */
+    this._countriesModalHandlers = {
+      escKeyPress: null,
+    };
   }
 
+  /**
+   * @override
+   * Находит все необходимые DOM-элементы
+   */
   findElements() {
     super.findElements();
 
@@ -75,7 +110,6 @@ export class MultilandingGenerator extends BaseGenerator {
       addTextReplacementBtn: document.getElementById("add-text-replacement"),
       addBlockRuleBtn: document.getElementById("add-block-rule"),
       addIpRuleBtn: document.getElementById("add-ip-rule"),
-      generateButton: document.getElementById("generate-btn"),
       // Шаблоны
       templates: {
         textReplacement: document.getElementById("text-replacement-template"),
@@ -91,6 +125,10 @@ export class MultilandingGenerator extends BaseGenerator {
     this.templates = this.elements.templates;
   }
 
+  /**
+   * @override
+   * Привязывает обработчики событий к интерактивным элементам формы
+   */
   bindEvents() {
     super.bindEvents();
 
@@ -101,24 +139,23 @@ export class MultilandingGenerator extends BaseGenerator {
       addIpRuleBtn,
       defaultShowBlocks,
       defaultHideBlocks,
-      generateButton,
     } = this.elements;
 
-    // Tabs
+    // Обработчики для вкладок
     tabButtons?.forEach((button) => {
       button.addEventListener("click", () => {
         this.switchTab(button.getAttribute("data-tab"));
       });
     });
 
-    // Добавление правил
+    // Обработчики для кнопок добавления правил
     addTextReplacementBtn?.addEventListener("click", () =>
       this.addTextReplacement()
     );
     addBlockRuleBtn?.addEventListener("click", () => this.addBlockRule());
     addIpRuleBtn?.addEventListener("click", () => this.addIpRule());
 
-    // Default block visibility
+    // Обработчики для полей настроек по умолчанию
     defaultShowBlocks?.addEventListener("change", (e) => {
       this.config.defaultBlockVisibility.showBlocks = parseCommaList(
         e.target.value
@@ -129,18 +166,28 @@ export class MultilandingGenerator extends BaseGenerator {
         e.target.value
       );
     });
-
-    // Кнопка генерации кода (используем базовый метод)
-    generateButton?.addEventListener("click", () => {
-      this.generateAndCopyCode();
-    });
   }
 
+  /**
+   * @override
+   * Удаляет все обработчики событий, в том числе специфичные для мультилендинга
+   */
+  unbindEvents() {
+    super.unbindEvents();
+
+    // Удаляем обработчики для модального окна со странами, если они существуют
+    this.closeCountriesModal();
+  }
+
+  /**
+   * @override
+   * Устанавливает начальное состояние формы
+   */
   setInitialState() {
     const { defaultShowBlocks, defaultHideBlocks } = this.elements;
     const { showBlocks, hideBlocks } = this.config.defaultBlockVisibility;
 
-    // Подставляем значения
+    // Подставляем значения в поля для блоков по умолчанию
     if (defaultShowBlocks) {
       defaultShowBlocks.value = showBlocks.join(", ");
     }
@@ -148,34 +195,65 @@ export class MultilandingGenerator extends BaseGenerator {
       defaultHideBlocks.value = hideBlocks.join(", ");
     }
 
-    // Рендерим UI
+    // Рендерим все секции интерфейса
     this.renderAll();
+
+    // Переключаемся на активную вкладку
     this.switchTab(this.activeTab);
   }
 
-  // Удобный метод, чтобы за один вызов всё перерисовать
+  /**
+   * Отрисовывает все секции пользовательского интерфейса:
+   * - Текстовые замены
+   * - Настройки видимости блоков
+   * - Правила IP-геолокации
+   */
   renderAll() {
     this.renderTextReplacements();
     this.renderBlockVisibility();
     this.renderIpRules();
   }
 
+  /**
+   * Переключает активную вкладку в интерфейсе
+   *
+   * @param {string} tabId - Идентификатор вкладки для активации
+   */
   switchTab(tabId) {
     const { tabContents, tabButtons } = this.elements;
     this.activeTab = tabId;
 
-    tabContents?.forEach((tab) => tab.classList.remove("active"));
-    tabButtons?.forEach((btn) => btn.classList.remove("active"));
+    // Скрываем все вкладки и снимаем активное состояние с кнопок
+    if (tabContents) {
+      tabContents.forEach((tab) => tab.classList.remove("active"));
+    }
 
+    if (tabButtons) {
+      tabButtons.forEach((btn) => btn.classList.remove("active"));
+    }
+
+    // Активируем нужную вкладку и кнопку
     const tabContent = document.getElementById(`${tabId}-tab`);
     const tabButton = document.querySelector(
       `.tab-button[data-tab="${tabId}"]`
     );
-    if (tabContent) tabContent.classList.add("active");
-    if (tabButton) tabButton.classList.add("active");
+
+    if (tabContent) {
+      tabContent.classList.add("active");
+    }
+
+    if (tabButton) {
+      tabButton.classList.add("active");
+    }
   }
 
-  // --- Методы добавления правил ---
+  //
+  // УПРАВЛЕНИЕ ПРАВИЛАМИ
+  //
+
+  /**
+   * Добавляет новое правило текстовой замены
+   */
   addTextReplacement() {
     this.config.textReplacements.push({
       keyword: "",
@@ -185,6 +263,9 @@ export class MultilandingGenerator extends BaseGenerator {
     this.renderTextReplacements();
   }
 
+  /**
+   * Добавляет новое правило для видимости блоков
+   */
   addBlockRule() {
     this.config.blockVisibility.push({
       paramName: "utm_content",
@@ -195,6 +276,9 @@ export class MultilandingGenerator extends BaseGenerator {
     this.renderBlockVisibility();
   }
 
+  /**
+   * Добавляет новое правило для геолокации
+   */
   addIpRule() {
     this.config.ipRules.push({
       country: "",
@@ -207,7 +291,13 @@ export class MultilandingGenerator extends BaseGenerator {
     this.renderIpRules();
   }
 
-  // --- Рендер Text Replacements ---
+  //
+  // РЕНДЕРИНГ UI
+  //
+
+  /**
+   * Отрисовывает секцию с настройками текстовых замен
+   */
   renderTextReplacements() {
     const container = this.elements.textReplacementsContainer;
     const tpl = this.templates.textReplacement;
@@ -218,6 +308,7 @@ export class MultilandingGenerator extends BaseGenerator {
       const clone = tpl.content.cloneNode(true);
       clone.querySelector(".rule-index").textContent = index + 1;
 
+      // Кнопка удаления
       clone
         .querySelector(".remove-text-replacement")
         .addEventListener("click", () => {
@@ -225,26 +316,27 @@ export class MultilandingGenerator extends BaseGenerator {
           this.renderTextReplacements();
         });
 
-      // keyword
+      // Поле keyword (ключ)
       const keywordInput = clone.querySelector(".keyword-input");
       keywordInput.value = item.keyword;
       keywordInput.addEventListener("change", (e) => {
         item.keyword = e.target.value;
       });
 
-      // defaultValue
+      // Поле defaultValue
       const defaultValueInput = clone.querySelector(".default-value-input");
       defaultValueInput.value = item.defaultValue;
       defaultValueInput.addEventListener("change", (e) => {
         item.defaultValue = e.target.value;
       });
 
-      // UTM rules
+      // Контейнер для UTM-правил
       const utmContainer = clone.querySelector(".utm-rules-container");
       item.utmRules.forEach((utmRule, ruleIndex) => {
         this.addUtmRuleToContainer(utmContainer, item, utmRule, ruleIndex);
       });
 
+      // Кнопка добавления UTM-правила
       const addUtmButton = clone.querySelector(".add-utm-rule");
       addUtmButton.addEventListener("click", () => {
         item.utmRules.push({
@@ -265,23 +357,45 @@ export class MultilandingGenerator extends BaseGenerator {
     });
   }
 
+  /**
+   * Добавляет UTM-правило в контейнер
+   *
+   * @param {HTMLElement} container - Контейнер для добавления правила
+   * @param {Object} parentItem - Родительское правило текстовой замены
+   * @param {Object} utmRule - Данные UTM-правила
+   * @param {number} ruleIndex - Индекс правила в массиве
+   * @private
+   */
   addUtmRuleToContainer(container, parentItem, utmRule, ruleIndex) {
     const tpl = this.templates.utmRule;
     if (!container || !tpl) return;
     const clone = tpl.content.cloneNode(true);
 
-    clone.querySelector(".utm-rule-index").textContent = ruleIndex + 1;
+    // Индекс правила
+    const indexElement = clone.querySelector(".utm-rule-index");
+    if (indexElement) {
+      indexElement.textContent = ruleIndex + 1;
+    }
 
-    clone.querySelector(".remove-utm-rule").addEventListener("click", () => {
-      parentItem.utmRules.splice(ruleIndex, 1);
-      this.renderTextReplacements();
-    });
+    // Кнопка удаления
+    const removeButton = clone.querySelector(".remove-utm-rule");
+    if (removeButton) {
+      removeButton.addEventListener("click", () => {
+        parentItem.utmRules.splice(ruleIndex, 1);
+        this.renderTextReplacements();
+      });
+    }
 
-    // paramName
+    // Селектор имени параметра
     const paramNameSelect = clone.querySelector(".param-name-select");
     const customContainer = clone.querySelector(".dcm-custom-param-container");
     const customInput = customContainer.querySelector(".custom-param-input");
 
+    /**
+     * Переключает видимость поля для кастомного параметра
+     * @param {string} value - Значение параметра
+     * @private
+     */
     const toggleCustom = (value) => {
       const standardParams = [
         "utm_source",
@@ -291,49 +405,82 @@ export class MultilandingGenerator extends BaseGenerator {
         "utm_term",
       ];
       const isCustom = !standardParams.includes(value);
-      customContainer.style.display = isCustom ? "block" : "none";
-      if (isCustom && customInput.value) {
-        utmRule.paramName = customInput.value;
+
+      if (customContainer) {
+        customContainer.style.display = isCustom ? "block" : "none";
+      }
+
+      if (isCustom && customInput && customInput.value === "") {
+        customInput.value = value;
       }
     };
 
-    paramNameSelect.value = utmRule.paramName;
-    toggleCustom(utmRule.paramName);
+    // Устанавливаем начальное значение и состояние
+    if (paramNameSelect) {
+      const standardParams = [
+        "utm_source",
+        "utm_medium",
+        "utm_campaign",
+        "utm_content",
+        "utm_term",
+      ];
+      const isCustom = !standardParams.includes(utmRule.paramName);
 
-    paramNameSelect.addEventListener("change", (e) => {
-      if (e.target.value === "custom") {
-        customContainer.style.display = "block";
-        utmRule.paramName = customInput.value || "my_param";
-      } else {
-        customContainer.style.display = "none";
-        utmRule.paramName = e.target.value;
+      paramNameSelect.value = isCustom ? "custom" : utmRule.paramName;
+      toggleCustom(utmRule.paramName);
+
+      if (isCustom && customInput) {
+        customInput.value = utmRule.paramName;
       }
-    });
 
-    customInput.addEventListener("change", (e) => {
-      utmRule.paramName = e.target.value;
-    });
+      paramNameSelect.addEventListener("change", (e) => {
+        if (e.target.value === "custom") {
+          if (customContainer) {
+            customContainer.style.display = "block";
+          }
+          utmRule.paramName = (customInput && customInput.value) || "my_param";
+        } else {
+          if (customContainer) {
+            customContainer.style.display = "none";
+          }
+          utmRule.paramName = e.target.value;
+        }
+      });
+    }
 
-    // paramValue
+    // Обработчик для кастомного поля
+    if (customInput) {
+      customInput.addEventListener("change", (e) => {
+        utmRule.paramName = e.target.value;
+      });
+    }
+
+    // Поле значения параметра
     const paramValueInput = clone.querySelector(".param-value-input");
-    paramValueInput.value = utmRule.paramValue;
-    paramValueInput.addEventListener("change", (e) => {
-      utmRule.paramValue = e.target.value;
-    });
+    if (paramValueInput) {
+      paramValueInput.value = utmRule.paramValue || "";
+      paramValueInput.addEventListener("change", (e) => {
+        utmRule.paramValue = e.target.value;
+      });
+    }
 
-    // replacementValue
+    // Поле для замены значения
     const replacementValueInput = clone.querySelector(
       ".replacement-value-input"
     );
-    replacementValueInput.value = utmRule.replacementValue;
-    replacementValueInput.addEventListener("change", (e) => {
-      utmRule.replacementValue = e.target.value;
-    });
+    if (replacementValueInput) {
+      replacementValueInput.value = utmRule.replacementValue || "";
+      replacementValueInput.addEventListener("change", (e) => {
+        utmRule.replacementValue = e.target.value;
+      });
+    }
 
     container.append(clone);
   }
 
-  // --- Рендер Block Visibility ---
+  /**
+   * Отрисовывает секцию с настройками видимости блоков
+   */
   renderBlockVisibility() {
     const container = this.elements.blockVisibilityContainer;
     const tpl = this.templates.blockRule;
@@ -342,22 +489,36 @@ export class MultilandingGenerator extends BaseGenerator {
 
     this.config.blockVisibility.forEach((rule, index) => {
       const clone = tpl.content.cloneNode(true);
-      clone.querySelector(".rule-index").textContent = index + 1;
 
-      clone
-        .querySelector(".remove-block-rule")
-        .addEventListener("click", () => {
+      // Индекс правила
+      const indexElement = clone.querySelector(".rule-index");
+      if (indexElement) {
+        indexElement.textContent = index + 1;
+      }
+
+      // Кнопка удаления
+      const removeButton = clone.querySelector(".remove-block-rule");
+      if (removeButton) {
+        removeButton.addEventListener("click", () => {
           this.config.blockVisibility.splice(index, 1);
           this.renderBlockVisibility();
         });
+      }
 
-      // paramName + custom
+      // Селектор имени параметра и кастомное поле
       const paramNameSelect = clone.querySelector(".param-name-select");
       const customContainer = clone.querySelector(
         ".dcm-custom-param-container"
       );
-      const customInput = customContainer.querySelector(".custom-param-input");
+      const customInput = customContainer
+        ? customContainer.querySelector(".custom-param-input")
+        : null;
 
+      /**
+       * Переключает видимость поля для кастомного параметра
+       * @param {string} value - Значение параметра
+       * @private
+       */
       const toggleCustom = (value) => {
         const standardParams = [
           "utm_source",
@@ -367,55 +528,89 @@ export class MultilandingGenerator extends BaseGenerator {
           "utm_term",
         ];
         const isCustom = !standardParams.includes(value);
-        customContainer.style.display = isCustom ? "block" : "none";
-        if (isCustom && customInput.value) {
-          rule.paramName = customInput.value;
+
+        if (customContainer) {
+          customContainer.style.display = isCustom ? "block" : "none";
+        }
+
+        if (isCustom && customInput && customInput.value === "") {
+          customInput.value = value;
         }
       };
 
-      paramNameSelect.value = rule.paramName;
-      toggleCustom(rule.paramName);
+      // Устанавливаем начальное значение и состояние
+      if (paramNameSelect) {
+        const standardParams = [
+          "utm_source",
+          "utm_medium",
+          "utm_campaign",
+          "utm_content",
+          "utm_term",
+        ];
+        const isCustom = !standardParams.includes(rule.paramName);
 
-      paramNameSelect.addEventListener("change", (e) => {
-        if (e.target.value === "custom") {
-          customContainer.style.display = "block";
-          rule.paramName = customInput.value || "my_param";
-        } else {
-          customContainer.style.display = "none";
-          rule.paramName = e.target.value;
+        paramNameSelect.value = isCustom ? "custom" : rule.paramName;
+        toggleCustom(rule.paramName);
+
+        if (isCustom && customInput) {
+          customInput.value = rule.paramName;
         }
-      });
 
-      customInput.addEventListener("change", (e) => {
-        rule.paramName = e.target.value;
-      });
+        paramNameSelect.addEventListener("change", (e) => {
+          if (e.target.value === "custom") {
+            if (customContainer) {
+              customContainer.style.display = "block";
+            }
+            rule.paramName = (customInput && customInput.value) || "my_param";
+          } else {
+            if (customContainer) {
+              customContainer.style.display = "none";
+            }
+            rule.paramName = e.target.value;
+          }
+        });
+      }
 
-      // paramValue
+      // Обработчик для кастомного поля
+      if (customInput) {
+        customInput.addEventListener("change", (e) => {
+          rule.paramName = e.target.value;
+        });
+      }
+
+      // Поле значения параметра
       const paramValueInput = clone.querySelector(".param-value-input");
-      paramValueInput.value = rule.paramValue;
-      paramValueInput.addEventListener("change", (e) => {
-        rule.paramValue = e.target.value;
-      });
+      if (paramValueInput) {
+        paramValueInput.value = rule.paramValue || "";
+        paramValueInput.addEventListener("change", (e) => {
+          rule.paramValue = e.target.value;
+        });
+      }
 
-      // showBlocks
+      // Поле для отображаемых блоков
       const showBlocksInput = clone.querySelector(".show-blocks-input");
-      showBlocksInput.value = rule.showBlocks.join(", ");
-      showBlocksInput.addEventListener("change", (e) => {
-        rule.showBlocks = parseCommaList(e.target.value);
-      });
+      if (showBlocksInput) {
+        showBlocksInput.value = (rule.showBlocks || []).join(", ");
+        showBlocksInput.addEventListener("change", (e) => {
+          rule.showBlocks = parseCommaList(e.target.value);
+        });
+      }
 
-      // hideBlocks
+      // Поле для скрываемых блоков
       const hideBlocksInput = clone.querySelector(".hide-blocks-input");
-      hideBlocksInput.value = rule.hideBlocks.join(", ");
-      hideBlocksInput.addEventListener("change", (e) => {
-        rule.hideBlocks = parseCommaList(e.target.value);
-      });
-
+      if (hideBlocksInput) {
+        hideBlocksInput.value = (rule.hideBlocks || []).join(", ");
+        hideBlocksInput.addEventListener("change", (e) => {
+          rule.hideBlocks = parseCommaList(e.target.value);
+        });
+      }
       container.append(clone);
     });
   }
 
-  // --- Рендер IP rules ---
+  /**
+   * Отрисовывает секцию с правилами на основе геолокации
+   */
   renderIpRules() {
     const container = this.elements.ipRulesContainer;
     const tpl = this.templates.ipRule;
@@ -424,44 +619,69 @@ export class MultilandingGenerator extends BaseGenerator {
 
     this.config.ipRules.forEach((rule, index) => {
       const clone = tpl.content.cloneNode(true);
-      clone.querySelector(".rule-index").textContent = index + 1;
+      // Индекс правила
+      const indexElement = clone.querySelector(".rule-index");
+      if (indexElement) {
+        indexElement.textContent = index + 1;
+      }
 
-      clone.querySelector(".remove-ip-rule").addEventListener("click", () => {
-        this.config.ipRules.splice(index, 1);
-        this.renderIpRules();
-      });
+      // Кнопка удаления
+      const removeButton = clone.querySelector(".remove-ip-rule");
+      if (removeButton) {
+        removeButton.addEventListener("click", () => {
+          this.config.ipRules.splice(index, 1);
+          this.renderIpRules();
+        });
+      }
 
-      // Страна / Город / Регион
+      // Поле страны
       const countryInput = clone.querySelector(".country-input");
-      countryInput.value = rule.country;
-      countryInput.addEventListener("change", (e) => {
-        rule.country = e.target.value;
-      });
+      if (countryInput) {
+        countryInput.value = rule.country || "";
+        countryInput.addEventListener("change", (e) => {
+          rule.country = e.target.value;
+        });
+      }
 
+      // Поле города
       const cityInput = clone.querySelector(".city-input");
-      cityInput.value = rule.city;
-      cityInput.addEventListener("change", (e) => {
-        rule.city = e.target.value;
-      });
+      if (cityInput) {
+        cityInput.value = rule.city || "*";
+        cityInput.addEventListener("change", (e) => {
+          rule.city = e.target.value;
+        });
+      }
 
+      // Поле региона
       const regionInput = clone.querySelector(".region-input");
-      regionInput.value = rule.region;
-      regionInput.addEventListener("change", (e) => {
-        rule.region = e.target.value;
-      });
+      if (regionInput) {
+        regionInput.value = rule.region || "*";
+        regionInput.addEventListener("change", (e) => {
+          rule.region = e.target.value;
+        });
+      }
 
-      // IP text replacements
+      // Контейнер для текстовых замен по IP
       const textContainer = clone.querySelector(
         ".ip-text-replacements-container"
       );
-      rule.textReplacements.forEach((rep, repIndex) => {
-        this.addIpTextReplacement(textContainer, rule, rep, repIndex);
-      });
 
-      // Добавить IP Text Replacement
-      clone
-        .querySelector(".add-ip-text-replacement")
-        .addEventListener("click", () => {
+      if (textContainer && rule.textReplacements) {
+        rule.textReplacements.forEach((rep, repIndex) => {
+          this.addIpTextReplacement(textContainer, rule, rep, repIndex);
+        });
+      }
+
+      // Кнопка добавления текстовой замены по IP
+      const addTextReplacementButton = clone.querySelector(
+        ".add-ip-text-replacement"
+      );
+      if (addTextReplacementButton) {
+        addTextReplacementButton.addEventListener("click", () => {
+          if (!rule.textReplacements) {
+            rule.textReplacements = [];
+          }
+
           rule.textReplacements.push({
             keyword: "",
             defaultValue: "",
@@ -469,71 +689,106 @@ export class MultilandingGenerator extends BaseGenerator {
           });
           this.renderIpRules();
         });
-
-      // show/hide blocks
+      }
+      // Поля для отображаемых/скрываемых блоков
       const showBlocksInput = clone.querySelector(".show-blocks-input");
-      showBlocksInput.value = (rule.showBlocks || []).join(", ");
-      showBlocksInput.addEventListener("change", (e) => {
-        rule.showBlocks = parseCommaList(e.target.value);
-      });
+      if (showBlocksInput) {
+        showBlocksInput.value = (rule.showBlocks || []).join(", ");
+        showBlocksInput.addEventListener("change", (e) => {
+          rule.showBlocks = parseCommaList(e.target.value);
+        });
+      }
 
       const hideBlocksInput = clone.querySelector(".hide-blocks-input");
-      hideBlocksInput.value = (rule.hideBlocks || []).join(", ");
-      hideBlocksInput.addEventListener("change", (e) => {
-        rule.hideBlocks = parseCommaList(e.target.value);
-      });
-
-      // Кнопка "показать страны"
-      clone.querySelectorAll(".show-countries-list").forEach((btn) => {
-        btn.addEventListener("click", (evt) => {
-          evt.preventDefault();
-          this.showCountriesList();
+      if (hideBlocksInput) {
+        hideBlocksInput.value = (rule.hideBlocks || []).join(", ");
+        hideBlocksInput.addEventListener("change", (e) => {
+          rule.hideBlocks = parseCommaList(e.target.value);
         });
-      });
+      }
+
+      // Кнопки "показать список стран"
+      const countryListButtons = clone.querySelectorAll(".show-countries-list");
+      if (countryListButtons) {
+        countryListButtons.forEach((btn) => {
+          btn.addEventListener("click", (evt) => {
+            evt.preventDefault();
+            this.showCountriesList(btn); // Передаем кнопку в функцию
+          });
+        });
+      }
 
       container.append(clone);
     });
   }
 
+  /**
+   * Добавляет правило текстовой замены для IP
+   *
+   * @param {HTMLElement} container - Контейнер для добавления правила
+   * @param {Object} rule - Родительское IP-правило
+   * @param {Object} rep - Данные правила текстовой замены
+   * @param {number} repIndex - Индекс правила в массиве
+   * @private
+   */
   addIpTextReplacement(container, rule, rep, repIndex) {
     const tpl = this.templates.ipTextReplacement;
     if (!tpl || !container) return;
     const clone = tpl.content.cloneNode(true);
 
-    clone.querySelector(".ip-replacement-index").textContent = repIndex + 1;
+    // Индекс правила
+    const indexElement = clone.querySelector(".ip-replacement-index");
+    if (indexElement) {
+      indexElement.textContent = repIndex + 1;
+    }
 
-    clone
-      .querySelector(".remove-ip-text-replacement")
-      .addEventListener("click", () => {
+    // Кнопка удаления
+    const removeButton = clone.querySelector(".remove-ip-text-replacement");
+    if (removeButton) {
+      removeButton.addEventListener("click", () => {
         rule.textReplacements.splice(repIndex, 1);
         this.renderIpRules();
       });
+    }
 
+    // Поле ключевого слова
     const keywordInput = clone.querySelector(".keyword-input");
-    keywordInput.value = rep.keyword;
-    keywordInput.addEventListener("change", (e) => {
-      rep.keyword = e.target.value;
-    });
+    if (keywordInput) {
+      keywordInput.value = rep.keyword || "";
+      keywordInput.addEventListener("change", (e) => {
+        rep.keyword = e.target.value;
+      });
+    }
 
+    // Поле значения по умолчанию
     const defaultValueInput = clone.querySelector(".default-value-input");
-    defaultValueInput.value = rep.defaultValue;
-    defaultValueInput.addEventListener("change", (e) => {
-      rep.defaultValue = e.target.value;
-    });
+    if (defaultValueInput) {
+      defaultValueInput.value = rep.defaultValue || "";
+      defaultValueInput.addEventListener("change", (e) => {
+        rep.defaultValue = e.target.value;
+      });
+    }
 
+    // Поле заменяемого значения
     const replacementValueInput = clone.querySelector(
       ".replacement-value-input"
     );
-    replacementValueInput.value = rep.replacementValue;
-    replacementValueInput.addEventListener("change", (e) => {
-      rep.replacementValue = e.target.value;
-    });
+    if (replacementValueInput) {
+      replacementValueInput.value = rep.replacementValue || "";
+      replacementValueInput.addEventListener("change", (e) => {
+        rep.replacementValue = e.target.value;
+      });
+    }
 
     container.append(clone);
   }
 
-  showCountriesList() {
-    // Логика показа модалки со странами (как и раньше)
+  /**
+   * Отображает модальное окно со списком стран для GeoJS API
+   * @param {HTMLElement} sourceButton - Кнопка, которая вызвала окно
+   */
+  showCountriesList(sourceButton) {
+    // Создаем модальное окно
     const modal = document.createElement("div");
     modal.id = "countries-modal";
     modal.className = "modal";
@@ -552,59 +807,265 @@ export class MultilandingGenerator extends BaseGenerator {
     closeButton.innerHTML = "&times;";
     closeButton.addEventListener("click", () => this.closeCountriesModal());
 
-    // ...и так далее. Содержимое остаётся тем же:
     const header = document.createElement("h3");
     header.textContent = "Список стран для GeoJS API";
 
-    // Прочие элементы...
-    // (не перепечатываем весь список ради компактности)
+    const description = document.createElement("p");
+    description.textContent =
+      "Используйте полное название страны на английском языке. Ниже приведены примеры наиболее распространенных стран:";
 
-    modalContent.append(closeButton, header /* ... */);
+    const table = document.createElement("table");
+    Object.assign(table.style, {
+      width: "100%",
+      borderCollapse: "collapse",
+      marginTop: "15px",
+    });
+
+    const thead = document.createElement("thead");
+    const headerRow = document.createElement("tr");
+
+    const thCountry = document.createElement("th");
+    thCountry.textContent = "Полное название (использовать)";
+    Object.assign(thCountry.style, {
+      padding: "8px",
+      textAlign: "left",
+      borderBottom: "2px solid #ddd",
+    });
+
+    const thCode = document.createElement("th");
+    thCode.textContent = "Код ISO (НЕ использовать)";
+    Object.assign(thCode.style, {
+      padding: "8px",
+      textAlign: "left",
+      borderBottom: "2px solid #ddd",
+    });
+
+    headerRow.append(thCountry, thCode);
+    thead.append(headerRow);
+    table.append(thead);
+
+    const tbody = document.createElement("tbody");
+
+    // Расширенная таблица стран
+    const countries = [
+      { name: "Russia", code: "RU" },
+      { name: "Belarus", code: "BY" },
+      { name: "Kazakhstan", code: "KZ" },
+      { name: "Ukraine", code: "UA" },
+      { name: "Armenia", code: "AM" },
+      { name: "Azerbaijan", code: "AZ" },
+      { name: "Moldova", code: "MD" },
+      { name: "Uzbekistan", code: "UZ" },
+      { name: "Tajikistan", code: "TJ" },
+      { name: "Kyrgyzstan", code: "KG" },
+      { name: "Turkmenistan", code: "TM" },
+      { name: "Georgia", code: "GE" },
+      { name: "Estonia", code: "EE" },
+      { name: "Latvia", code: "LV" },
+      { name: "Lithuania", code: "LT" },
+      { name: "United States", code: "US" },
+      { name: "Germany", code: "DE" },
+      { name: "France", code: "FR" },
+      { name: "United Kingdom", code: "GB" },
+      { name: "China", code: "CN" },
+      { name: "Japan", code: "JP" },
+      { name: "Canada", code: "CA" },
+      { name: "Australia", code: "AU" },
+      { name: "Brazil", code: "BR" },
+      { name: "India", code: "IN" },
+      { name: "Spain", code: "ES" },
+      { name: "Italy", code: "IT" },
+      { name: "Mexico", code: "MX" },
+      { name: "South Korea", code: "KR" },
+    ];
+
+    countries.forEach((c, idx) => {
+      const { name, code } = c;
+      const row = document.createElement("tr");
+      row.style.backgroundColor = idx % 2 === 0 ? "#f9f9f9" : "#fff";
+
+      const tdCountry = document.createElement("td");
+      tdCountry.textContent = name;
+      Object.assign(tdCountry.style, {
+        padding: "8px",
+        borderBottom: "1px solid #ddd",
+        cursor: "pointer",
+      });
+      tdCountry.title = "Нажмите, чтобы использовать это название";
+      tdCountry.addEventListener("click", () => {
+        // Если есть кнопка-источник, находим родительский контейнер IP-правила
+        if (sourceButton) {
+          const ruleContainer = sourceButton.closest(".ip-rule");
+          if (ruleContainer) {
+            // Находим инпут страны внутри этого контейнера
+            const countryInput = ruleContainer.querySelector(".country-input");
+            if (countryInput) {
+              countryInput.value = name;
+              countryInput.dispatchEvent(
+                new Event("change", { bubbles: true })
+              );
+              this.closeCountriesModal();
+              return;
+            }
+          }
+        }
+
+        // Запасной вариант, если что-то пошло не так
+        const activeInput = document.querySelector(".country-input");
+        if (activeInput) {
+          activeInput.value = name;
+          activeInput.dispatchEvent(new Event("change", { bubbles: true }));
+        }
+        this.closeCountriesModal();
+      });
+
+      const tdCode = document.createElement("td");
+      tdCode.textContent = code;
+      Object.assign(tdCode.style, {
+        padding: "8px",
+        borderBottom: "1px solid #ddd",
+      });
+
+      row.append(tdCountry, tdCode);
+      tbody.append(row);
+    });
+    table.append(tbody);
+
+    const note = document.createElement("p");
+    note.textContent =
+      'Примечание: Для обозначения любой страны используйте символ "*". Нажмите на название страны, чтобы использовать его.';
+    Object.assign(note.style, {
+      marginTop: "15px",
+      fontStyle: "italic",
+    });
+
+    const closeBtnBottom = document.createElement("button");
+    closeBtnBottom.className = "btn btn-primary";
+    closeBtnBottom.textContent = "Закрыть";
+    Object.assign(closeBtnBottom.style, {
+      display: "block",
+      margin: "15px auto 0",
+    });
+    closeBtnBottom.addEventListener("click", () => this.closeCountriesModal());
+
+    modalContent.append(
+      closeButton,
+      header,
+      description,
+      table,
+      note,
+      closeBtnBottom
+    );
+
     modal.append(modalContent);
     document.body.append(modal);
 
+    // Добавляем обработчики событий
     modal.addEventListener("click", (e) => {
       if (e.target === modal) this.closeCountriesModal();
     });
-    document.addEventListener("keydown", this.handleCountriesModalEscape);
+
+    this._countriesModalHandlers.escKeyPress = (event) => {
+      if (event.key === "Escape") this.closeCountriesModal();
+    };
+
+    document.addEventListener(
+      "keydown",
+      this._countriesModalHandlers.escKeyPress
+    );
   }
 
+  /**
+   * Закрывает модальное окно со списком стран
+   * @private
+   */
   closeCountriesModal() {
     const modal = document.getElementById("countries-modal");
+
     if (modal) {
       modal.remove();
-      document.removeEventListener("keydown", this.handleCountriesModalEscape);
+    }
+
+    if (this._countriesModalHandlers.escKeyPress) {
+      document.removeEventListener(
+        "keydown",
+        this._countriesModalHandlers.escKeyPress
+      );
+      this._countriesModalHandlers.escKeyPress = null;
     }
   }
 
-  handleCountriesModalEscape = (event) => {
-    if (event.key === "Escape") this.closeCountriesModal();
-  };
+  /**
+   * Закрывает модальное окно со списком стран
+   * @private
+   */
+  closeCountriesModal() {
+    const modal = document.getElementById("countries-modal");
 
-  // --- Самая главная часть: Генерация итогового кода ---
+    if (modal) {
+      modal.remove();
+    }
+
+    if (this._countriesModalHandlers.escKeyPress) {
+      document.removeEventListener(
+        "keydown",
+        this._countriesModalHandlers.escKeyPress
+      );
+      this._countriesModalHandlers.escKeyPress = null;
+    }
+  }
+
+  //
+  // ГЕНЕРАЦИЯ КОДА
+  //
+
+  /**
+   * @override
+   * Собирает данные из формы для генерации кода
+   * @returns {Object} Настройки для генерации
+   */
   collectData() {
-    // Если хотим использовать базовый метод generateAndCopyCode(), нужно вернуть "config"
-    // Здесь можно просто вернуть this.config (или сделать глубокую копию)
+    // Делаем глубокую копию текущей конфигурации
     return structuredClone(this.config);
   }
 
+  /**
+   * Собирает кастомные параметры из текущей конфигурации
+   *
+   * @returns {Array<string>} Массив имен кастомных параметров
+   * @private
+   */
   collectCustomParameters() {
     const customParams = new Set();
-    this.config.textReplacements
-      .flatMap((r) => r.utmRules || [])
-      .filter((rule) => rule.paramName && !rule.paramName.startsWith("utm_"))
-      .forEach((rule) => customParams.add(rule.paramName));
 
-    this.config.blockVisibility
-      .filter((rule) => rule.paramName && !rule.paramName.startsWith("utm_"))
-      .forEach((rule) => customParams.add(rule.paramName));
+    // Собираем кастомные параметры из правил текстовых замен
+    if (this.config.textReplacements) {
+      this.config.textReplacements
+        .flatMap((r) => r.utmRules || [])
+        .filter((rule) => rule.paramName && !rule.paramName.startsWith("utm_"))
+        .forEach((rule) => customParams.add(rule.paramName));
+    }
+
+    // Собираем кастомные параметры из правил видимости блоков
+    if (this.config.blockVisibility) {
+      this.config.blockVisibility
+        .filter((rule) => rule.paramName && !rule.paramName.startsWith("utm_"))
+        .forEach((rule) => customParams.add(rule.paramName));
+    }
 
     return [...customParams];
   }
 
-  generateCode(config = {}) {
+  /**
+   * @override
+   * Генерирует JS-код для работы с UTM/IP
+   *
+   * @param {Object} settings - Настройки для генерации кода
+   * @returns {string} Сгенерированный код
+   */
+  generateCode(settings = {}) {
     // Собираем JSON
-    const cleanConfig = structuredClone(config);
+    const cleanConfig = structuredClone(settings);
 
     // Подстрахуемся, если paramName не указаны
     cleanConfig.textReplacements?.forEach((r) =>
@@ -626,7 +1087,7 @@ export class MultilandingGenerator extends BaseGenerator {
     // Превращаем в JSON
     const configJson = JSON.stringify(cleanConfig, null, 2);
 
-    return `<!-- UTM/IP расширение -->
+    return `<!-- Расширение - UTM/IP  -->
 <script>
 document.documentElement.style.visibility = 'hidden';
 

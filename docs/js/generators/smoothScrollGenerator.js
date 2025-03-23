@@ -1,6 +1,20 @@
 import { BaseGenerator } from "./base/baseGenerator.js";
 
+/**
+ * Генератор плавной прокрутки страницы.
+ * Позволяет создавать скрипт для плавного скроллинга с различными настройками:
+ * - Скорость и плавность прокрутки
+ * - Поддержка клавиатуры
+ * - Поддержка мобильных устройств
+ * - Исключаемые селекторы
+ * - Типы плавности движения
+ *
+ * @extends BaseGenerator
+ */
 export class SmoothScrollGenerator extends BaseGenerator {
+  /**
+   * Создает новый экземпляр генератора плавной прокрутки
+   */
   constructor() {
     super();
 
@@ -13,6 +27,10 @@ export class SmoothScrollGenerator extends BaseGenerator {
     this._handleSmoothnessInput = () => this.updateSmoothnessUI();
     this._handleKeyboardChange = () => this.updateKeyboardOptionsVisibility();
 
+    /**
+     * Набор предустановленных конфигураций для разных сценариев использования
+     * @type {Object}
+     */
     this.presets = {
       universal: {
         description: "Универсальный — средний баланс скорости и плавности",
@@ -21,7 +39,7 @@ export class SmoothScrollGenerator extends BaseGenerator {
         step: 120,
         keyboard: true,
         keyboardStep: 200,
-        mobile: true,
+        mobile: false,
         excludeSelectors: "",
         easingType: "standard",
       },
@@ -32,7 +50,7 @@ export class SmoothScrollGenerator extends BaseGenerator {
         step: 80,
         keyboard: true,
         keyboardStep: 180,
-        mobile: true,
+        mobile: false,
         excludeSelectors: "",
         easingType: "precise",
       },
@@ -43,7 +61,7 @@ export class SmoothScrollGenerator extends BaseGenerator {
         step: 150,
         keyboard: true,
         keyboardStep: 250,
-        mobile: true,
+        mobile: false,
         excludeSelectors: "",
         easingType: "minimal",
       },
@@ -54,7 +72,7 @@ export class SmoothScrollGenerator extends BaseGenerator {
         step: 100,
         keyboard: true,
         keyboardStep: 150,
-        mobile: true,
+        mobile: false,
         excludeSelectors: "",
         easingType: "precise",
       },
@@ -65,13 +83,17 @@ export class SmoothScrollGenerator extends BaseGenerator {
         step: 180,
         keyboard: true,
         keyboardStep: 300,
-        mobile: true,
+        mobile: false,
         excludeSelectors: "",
         easingType: "standard",
       },
     };
   }
 
+  /**
+   * @override
+   * Находит все необходимые DOM-элементы для генератора плавной прокрутки
+   */
   findElements() {
     super.findElements();
     this.elements = {
@@ -100,6 +122,10 @@ export class SmoothScrollGenerator extends BaseGenerator {
     };
   }
 
+  /**
+   * @override
+   * Привязывает обработчики событий к интерактивным элементам формы
+   */
   bindEvents() {
     super.bindEvents(); // базовые события, включая закрытие модалки
 
@@ -122,6 +148,10 @@ export class SmoothScrollGenerator extends BaseGenerator {
     keyboardSupport?.addEventListener("change", this._handleKeyboardChange);
   }
 
+  /**
+   * @override
+   * Удаляет все обработчики событий, в том числе специфичные для плавной прокрутки
+   */
   unbindEvents() {
     // Снимаем наши события
     const {
@@ -146,12 +176,20 @@ export class SmoothScrollGenerator extends BaseGenerator {
     super.unbindEvents();
   }
 
+  /**
+   * @override
+   * Уничтожает генератор плавной прокрутки и освобождает ресурсы
+   */
   destroy() {
     this.unbindEvents();
     console.log("SmoothScrollGenerator: Генератор уничтожен");
     super.destroy();
   }
 
+  /**
+   * @override
+   * Устанавливает начальное состояние формы на основе выбранного пресета
+   */
   setInitialState() {
     // Применяем изначально выбранный пресет
     const { presetSelect } = this.elements;
@@ -163,6 +201,10 @@ export class SmoothScrollGenerator extends BaseGenerator {
     this.updateKeyboardOptionsVisibility();
   }
 
+  /**
+   * Переключает активную вкладку в интерфейсе
+   * @param {string} tab - Идентификатор вкладки ('basic' или 'advanced')
+   */
   switchTab(tab) {
     const { basicTab, advancedTab, basicTabBtn, advancedTabBtn } =
       this.elements;
@@ -179,6 +221,10 @@ export class SmoothScrollGenerator extends BaseGenerator {
     }
   }
 
+  /**
+   * Применяет выбранный пресет к форме настройки
+   * @param {string} presetName - Имя пресета из списка доступных
+   */
   applyPreset(presetName) {
     const preset = this.presets[presetName];
     if (!preset) return;
@@ -210,6 +256,9 @@ export class SmoothScrollGenerator extends BaseGenerator {
     this.updateKeyboardOptionsVisibility();
   }
 
+  /**
+   * Обновляет отображение значения скорости и примерного времени прокрутки
+   */
   updateSpeedUI() {
     const { speedSelect, speedValueDisplay, speedTimeDisplay } = this.elements;
     if (!speedSelect || !speedValueDisplay) return;
@@ -224,6 +273,9 @@ export class SmoothScrollGenerator extends BaseGenerator {
     }
   }
 
+  /**
+   * Обновляет отображение значения плавности и тип сглаживания
+   */
   updateSmoothnessUI() {
     const { smoothnessSelect, smoothnessValueDisplay, easingTypeDisplay } =
       this.elements;
@@ -249,6 +301,9 @@ export class SmoothScrollGenerator extends BaseGenerator {
     }
   }
 
+  /**
+   * Обновляет видимость настроек управления клавиатурой в зависимости от состояния чекбокса
+   */
   updateKeyboardOptionsVisibility() {
     const keyboardOption = document.querySelector(".keyboard-option");
     if (keyboardOption && this.elements.keyboardSupport) {
@@ -258,7 +313,11 @@ export class SmoothScrollGenerator extends BaseGenerator {
     }
   }
 
-  // Используем базовый generateAndCopyCode() => оно вызывает collectData + generateCode
+  /**
+   * @override
+   * Собирает данные из формы для генерации кода
+   * @returns {Object} Настройки для генерации
+   */
   collectData() {
     // Собираем нужные настройки из UI:
     return {
@@ -274,9 +333,13 @@ export class SmoothScrollGenerator extends BaseGenerator {
     };
   }
 
+  /**
+   * @override
+   * Генерирует JavaScript код для плавной прокрутки страницы
+   * @param {Object} settings - Настройки для генерации кода
+   * @returns {string} Сгенерированный код
+   */
   generateCode(settings = {}) {
-    // Логика генерации
-    // ...
     // Вызываем вспомогательные методы для формирования "сложного" скрипта
     const { easeFactor, dampingCode, extendedGlideCode } =
       this._getEasingSettings(settings);
@@ -290,7 +353,7 @@ export class SmoothScrollGenerator extends BaseGenerator {
 
     return `<script>
 /**
- * Расширение для Taptop - плавный скролл.
+ * Расширение - Плавный скролл 
  * Настройки: шаг ${settings.step}px, плавность ${Math.round(
       settings.smoothnessLevel
     )}%, эффект ${settings.easingType}
@@ -345,7 +408,12 @@ export class SmoothScrollGenerator extends BaseGenerator {
 </script>`;
   }
 
-  // --- Приватные вспомогательные методы ---
+  /**
+   * Получает настройки плавности для скрипта на основе параметров пользователя
+   * @param {Object} settings - Настройки генератора
+   * @returns {Object} Объект с кодом и параметрами плавности
+   * @private
+   */
   _getEasingSettings(settings) {
     let easeFactorBase = 0.14 - (settings.smoothnessLevel / 100) * 0.1;
     let easeFactor = easeFactorBase;
@@ -385,6 +453,12 @@ export class SmoothScrollGenerator extends BaseGenerator {
     return { easeFactor, dampingCode, extendedGlideCode };
   }
 
+  /**
+   * Генерирует код для исключения элементов из плавной прокрутки
+   * @param {string} excludeSelectors - CSS-селекторы для исключения
+   * @returns {string} Код для исключения элементов
+   * @private
+   */
   _getExcludeSelectorsCode(excludeSelectors) {
     if (!excludeSelectors) {
       return "function shouldExclude(element) { return false; }";
@@ -409,6 +483,12 @@ export class SmoothScrollGenerator extends BaseGenerator {
   }`;
   }
 
+  /**
+   * Генерирует код для поддержки клавиатурной навигации
+   * @param {Object} settings - Настройки генератора
+   * @returns {string} Код для поддержки клавиатуры
+   * @private
+   */
   _getKeyboardCode(settings) {
     return `
   document.addEventListener('keydown', function(e) {
@@ -440,6 +520,11 @@ export class SmoothScrollGenerator extends BaseGenerator {
   });`;
   }
 
+  /**
+   * Генерирует код для поддержки мобильных устройств
+   * @returns {string} Код для поддержки мобильных устройств
+   * @private
+   */
   _getMobileCode() {
     return `
   (function() {
